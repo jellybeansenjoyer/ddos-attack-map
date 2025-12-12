@@ -1,0 +1,3 @@
+.env
+GeoLite2-City.mmdb
+verify_setup.py
