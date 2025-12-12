@@ -1,3 +1,4 @@
 .env
 GeoLite2-City.mmdb
 verify_setup.py
+backend/__pycache__
