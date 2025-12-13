@@ -1,0 +1,28 @@
+{
+  "model_type": "xgboost",
+  "training_date": "2025-12-13T11:46:25.744419",
+  "training_samples": 4800,
+  "test_samples": 1200,
+  "feature_names": [
+    "requests_per_minute",
+    "cloudflare_threat_score",
+    "abuseipdb_confidence",
+    "unique_paths_requested",
+    "burst_factor",
+    "country_risk_score",
+    "request_method_diversity",
+    "time_since_first_seen"
+  ],
+  "classes": [
+    "brute_force",
+    "dos",
+    "legitimate",
+    "scan"
+  ],
+  "metrics": {
+    "accuracy": 0.9708333333333333,
+    "precision": 0.9726695698136459,
+    "recall": 0.9708333333333333,
+    "f1_score": 0.9713822858144285
+  }
+}
