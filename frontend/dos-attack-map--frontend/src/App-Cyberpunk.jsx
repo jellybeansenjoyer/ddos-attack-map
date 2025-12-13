@@ -2,10 +2,8 @@ import React, { useState, useEffect, Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei'
 import { Earth, Stars, AttackArc, AttackMarker } from './components/Globe'
-import { StatsPanel, AttackFeed, Header } from './components/Components'
-import './App.css'
+import { StatsPanel, AttackFeed, Header, ThreatRadar, MatrixRain } from './components/CyberpunkComponents'
 import './App-Cyberpunk.css'
-import { MatrixRain, ThreatRadar} from './components/CyberpunkComponents'
 
 function App() {
   // State
@@ -16,6 +14,7 @@ function App() {
   const [isConnected, setIsConnected] = useState(false)
   const [stats, setStats] = useState(null)
   const [wsError, setWsError] = useState(null)
+  const [threatLevel, setThreatLevel] = useState('HIGH')
   
   // WebSocket connection
   useEffect(() => {
@@ -56,12 +55,6 @@ function App() {
     ws.onclose = () => {
       console.log('WebSocket disconnected')
       setIsConnected(false)
-      
-      // Auto-reconnect after 3 seconds
-      setTimeout(() => {
-        console.log('Attempting to reconnect...')
-        // Component will remount and reconnect
-      }, 3000)
     }
     
     return () => {
@@ -76,14 +69,18 @@ function App() {
         const response = await fetch('http://localhost:8000/api/stats/summary')
         const data = await response.json()
         setStats(data)
+        
+        // Calculate threat level based on recent attacks
+        if (data.attacks_1h > 100) setThreatLevel('CRITICAL')
+        else if (data.attacks_1h > 50) setThreatLevel('HIGH')
+        else if (data.attacks_1h > 20) setThreatLevel('MEDIUM')
+        else setThreatLevel('LOW')
       } catch (err) {
         console.error('Error fetching stats:', err)
       }
     }
     
     fetchStats()
-    
-    // Refresh stats every 5 seconds
     const interval = setInterval(fetchStats, 5000)
     
     return () => clearInterval(interval)
@@ -96,7 +93,7 @@ function App() {
       setAttacks(prev => 
         prev.filter(attack => {
           const age = now - new Date(attack.timestamp).getTime()
-          return age < 5000 // Keep for 5 seconds
+          return age < 5000
         })
       )
     }, 1000)
@@ -104,46 +101,62 @@ function App() {
     return () => clearInterval(interval)
   }, [])
   
-  // Recent attacks for feed (last 10)
   const recentAttacks = attacks.slice(0, 10)
   
   return (
     <div className="app">
+      {/* Matrix Rain Background */}
+      <MatrixRain />
+      
       {/* Header */}
-      <Header 
-        isConnected={isConnected}
-        totalAttacks={stats?.total_attacks || 0}
-      />
+      <header className="app-header">
+        <div className="header-left">
+          <h1 data-text="⚡ DOS ATTACK MAP">⚡ DOS ATTACK MAP</h1>
+          <div className="subtitle">Real-time Global Threat Intelligence</div>
+        </div>
+        
+        <div className="header-right">
+          <div className="threat-level">
+            <span className="threat-level-text">THREAT LEVEL: {threatLevel}</span>
+          </div>
+          
+          <div className={`live-indicator ${isConnected ? 'live' : 'offline'}`}>
+            <span className="pulse-dot"></span>
+            {isConnected ? 'LIVE' : 'OFFLINE'}
+          </div>
+          
+          <div className="total-count">
+            {stats?.total_attacks?.toLocaleString() || '0'} ATTACKS
+          </div>
+        </div>
+      </header>
       
       <div className="main-container">
         {/* 3D Globe */}
         <div className="globe-container">
           <Suspense fallback={
             <div className="globe-loading">
-              <h2>🌍 Loading Earth...</h2>
-              <p>Downloading textures...</p>
+              <h2>▓▓▓ INITIALIZING GLOBE ▓▓▓</h2>
+              <p>LOADING EARTH TEXTURES...</p>
             </div>
           }>
             <Canvas>
-              {/* Camera */}
               <PerspectiveCamera
                 makeDefault
                 position={[0, 0, 2.5]}
                 fov={45}
               />
               
-              {/* Lights */}
-              <ambientLight intensity={0.3} />
-              <pointLight position={[10, 10, 10]} intensity={1} />
-              <pointLight position={[-10, -10, -10]} intensity={0.5} />
+              {/* Lights with neon glow */}
+              <ambientLight intensity={0.2} />
+              <pointLight position={[10, 10, 10]} intensity={1} color="#00FFFF" />
+              <pointLight position={[-10, -10, -10]} intensity={0.5} color="#FF00FF" />
+              <pointLight position={[0, 10, -10]} intensity={0.3} color="#FFFF00" />
               
-              {/* Stars background */}
               <Stars count={5000} />
-              
-              {/* Earth */}
               <Earth rotationSpeed={isPaused ? 0 : rotationSpeed} />
               
-              {/* Attack arcs */}
+              {/* Attack arcs with neon glow */}
               {attacks.map(attack => (
                 <AttackArc
                   key={attack.id}
@@ -152,7 +165,7 @@ function App() {
                 />
               ))}
               
-              {/* Attack markers on recent attacks */}
+              {/* Attack markers */}
               {recentAttacks.map(attack => (
                 <AttackMarker
                   key={`marker-${attack.id}`}
@@ -160,7 +173,6 @@ function App() {
                 />
               ))}
               
-              {/* Controls */}
               <OrbitControls
                 enableZoom={true}
                 enablePan={false}
@@ -177,11 +189,11 @@ function App() {
               onClick={() => setIsPaused(!isPaused)}
               className="control-btn"
             >
-              {isPaused ? '▶️ Play' : '⏸️ Pause'}
+              {isPaused ? '▶ PLAY' : '⏸ PAUSE'}
             </button>
             
             <div className="speed-control">
-              <label>Speed:</label>
+              <label>SPEED</label>
               <input
                 type="range"
                 min="0.0005"
@@ -194,13 +206,16 @@ function App() {
             </div>
             
             <div className="attack-count">
-              Active: {attacks.length}/{maxAttacks}
+              ACTIVE: {attacks.length}/{maxAttacks}
             </div>
           </div>
         </div>
         
         {/* Sidebar */}
         <div className="sidebar">
+          {/* Threat Radar */}
+          <ThreatRadar threatLevel={threatLevel} />
+          
           {/* Statistics Panel */}
           <StatsPanel stats={stats} loading={!stats} />
           
@@ -208,13 +223,13 @@ function App() {
           <AttackFeed attacks={recentAttacks} />
           
           {/* Connection Status */}
-          <div className="connection-status">
+          <div className="connection-status cyber-panel">
             <div className={`status-indicator ${isConnected ? 'connected' : 'disconnected'}`}>
               <span className="status-dot"></span>
-              {isConnected ? 'WebSocket Connected' : 'WebSocket Disconnected'}
+              {isConnected ? 'SYSTEM ONLINE' : 'SYSTEM OFFLINE'}
             </div>
             {wsError && (
-              <div className="error-message">{wsError}</div>
+              <div className="error-message">⚠ {wsError}</div>
             )}
           </div>
         </div>
