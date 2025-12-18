@@ -5,7 +5,6 @@ Converts GraphQL responses to attack records
 
 from datetime import datetime
 from typing import Dict, Optional
-import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -112,8 +111,7 @@ class CloudflareGraphQLTransformer:
             threat_score = CloudflareGraphQLTransformer._calculate_threat_score(
                 action,
                 source,
-                event.get("edgeResponseStatus"),
-                event.get("metadata")
+                event.get("edgeResponseStatus")
             )
             
             # Build attack record
@@ -145,8 +143,7 @@ class CloudflareGraphQLTransformer:
     def _calculate_threat_score(
         action: str,
         source: str,
-        status_code: int,
-        metadata: str
+        status_code: int
     ) -> int:
         """
         Calculate threat score based on event attributes
@@ -182,18 +179,6 @@ class CloudflareGraphQLTransformer:
                 score += 15
             elif status_code == 429:
                 score += 20
-        
-        # Parse metadata for additional context
-        if metadata:
-            try:
-                meta = json.loads(metadata)
-                if isinstance(meta, dict):
-                    # Add score from metadata if available
-                    meta_score = meta.get("score", 0)
-                    if meta_score:
-                        score = int((score + meta_score) / 2)
-            except:
-                pass
         
         # Clamp to 0-100
         return max(0, min(100, score))

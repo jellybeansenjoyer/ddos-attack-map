@@ -49,7 +49,6 @@ class CloudflareGraphQLClient:
                         clientRequestPath
                         edgeResponseStatus
                         matchIndex
-                        metadata
                         originResponseStatus
                         originatorRayName
                         ruleId
@@ -74,9 +73,6 @@ class CloudflareGraphQLClient:
                     ) {
                         dimensions {
                             datetime
-                            clientCountryName
-                            clientRequestHTTPMethodName
-                            edgeResponseStatus
                         }
                         sum {
                             requests
@@ -103,25 +99,13 @@ class CloudflareGraphQLClient:
         """
         self.zone_id = zone_id
         self.demo_mode = demo_mode
+        self.api_token = api_token
         
         if not demo_mode:
-            # Setup GraphQL transport
-            transport = AIOHTTPTransport(
-                url=self.GRAPHQL_ENDPOINT,
-                headers={
-                    "Authorization": f"Bearer {api_token}",
-                    "Content-Type": "application/json"
-                }
-            )
-            
-            # Create GraphQL client
-            self.client = Client(
-                transport=transport,
-                fetch_schema_from_transport=False,
-                execute_timeout=30
-            )
+            # Store config but don't create client yet
+            # We'll create a new session for each request to avoid connection reuse issues
+            self.endpoint = self.GRAPHQL_ENDPOINT
         else:
-            self.client = None
             logger.info("Running in DEMO mode - using simulated data")
     
     async def fetch_firewall_events(
@@ -159,7 +143,22 @@ class CloudflareGraphQLClient:
         }
         
         try:
-            async with self.client as session:
+            # Create new transport and client for this request
+            transport = AIOHTTPTransport(
+                url=self.endpoint,
+                headers={
+                    "Authorization": f"Bearer {self.api_token}",
+                    "Content-Type": "application/json"
+                }
+            )
+            
+            client = Client(
+                transport=transport,
+                fetch_schema_from_transport=False,
+                execute_timeout=30
+            )
+            
+            async with client as session:
                 result = await session.execute(
                     self.FIREWALL_EVENTS_QUERY,
                     variable_values=variables
@@ -212,7 +211,22 @@ class CloudflareGraphQLClient:
         }
         
         try:
-            async with self.client as session:
+            # Create new transport and client for this request
+            transport = AIOHTTPTransport(
+                url=self.endpoint,
+                headers={
+                    "Authorization": f"Bearer {self.api_token}",
+                    "Content-Type": "application/json"
+                }
+            )
+            
+            client = Client(
+                transport=transport,
+                fetch_schema_from_transport=False,
+                execute_timeout=30
+            )
+            
+            async with client as session:
                 result = await session.execute(
                     self.HTTP_ANALYTICS_QUERY,
                     variable_values=variables
