@@ -2,7 +2,6 @@
 FastAPI Main Application
 DOS Attack Map - Backend API with Cloudflare GraphQL Integration
 """
-
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -14,13 +13,14 @@ from datetime import datetime
 import logging
 
 # Import routers
-from app.api.routes import attacks, statistics, websocket, health
+from app.api.routes import attacks, statistics, websocket, health, honeypot
 
 # Import database
 from app.database import engine, test_connection
 
-# Import Cloudflare GraphQL task
+# Import tasks
 from app.tasks.fetch_cloudflare_graphql import run_graphql_fetch_task
+from app.tasks.fetch_global_threats import run_global_threats_fetch_task
 
 # Setup logging
 logging.basicConfig(
@@ -34,7 +34,6 @@ API_VERSION = "2.0.0"
 
 # Scheduler instance
 scheduler = AsyncIOScheduler()
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -89,6 +88,25 @@ async def lifespan(app: FastAPI):
         import traceback
         traceback.print_exc()
     
+    # Setup Global Threat Intelligence scheduler
+    try:
+        threat_interval = int(os.getenv("THREAT_FETCH_INTERVAL_MINUTES", "15"))
+        
+        scheduler.add_job(
+            run_global_threats_fetch_task,
+            trigger=IntervalTrigger(minutes=threat_interval),
+            id="fetch_global_threats",
+            name="Fetch Global Threat Intelligence",
+            replace_existing=True
+        )
+        
+        logger.info(f"⏰ Global threat intelligence scheduled - every {threat_interval} minutes")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to schedule threat intelligence: {e}")
+        import traceback
+        traceback.print_exc()
+    
     logger.info(f"✅ API ready on port {os.getenv('API_PORT', 8000)}")
     
     yield
@@ -103,7 +121,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"❌ Error shutting down scheduler: {e}")
 
-
 # Create FastAPI app
 app = FastAPI(
     title="DOS Attack Map API (GraphQL Powered)",
@@ -114,10 +131,8 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-
 # CORS Configuration
 origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -126,13 +141,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # Include routers
 app.include_router(health.router, tags=["Health"])
 app.include_router(attacks.router, prefix="/api/attacks", tags=["Attacks"])
 app.include_router(statistics.router, prefix="/api/stats", tags=["Statistics"])
 app.include_router(websocket.router, prefix="/ws", tags=["WebSocket"])
-
+app.include_router(honeypot.router, tags=["Honeypot"])
 
 # Root endpoint
 @app.get("/")
@@ -142,6 +156,7 @@ async def root():
         "name": "DOS Attack Map API",
         "version": API_VERSION,
         "graphql_enabled": True,
+        "threat_intelligence_enabled": True,
         "status": "operational",
         "timestamp": datetime.utcnow().isoformat(),
         "endpoints": {
@@ -150,15 +165,15 @@ async def root():
             "attacks": "/api/attacks",
             "statistics": "/api/stats",
             "websocket": "/ws/attacks",
+            "honeypot": "/api/honeypot/ingest",
             "scheduler": "/scheduler/status"
         }
     }
 
-
 # Scheduler status endpoint
 @app.get("/scheduler/status")
 async def scheduler_status():
-    """Get Cloudflare GraphQL scheduler status"""
+    """Get scheduler status"""
     try:
         jobs = scheduler.get_jobs()
         
@@ -181,7 +196,6 @@ async def scheduler_status():
             "error": str(e)
         }
 
-
 # Cloudflare configuration endpoint
 @app.get("/cloudflare/config")
 async def cloudflare_config():
@@ -193,6 +207,21 @@ async def cloudflare_config():
         "api_token_configured": bool(os.getenv("CLOUDFLARE_API_TOKEN"))
     }
 
+# Threat Intelligence configuration endpoint
+@app.get("/threat-intelligence/config")
+async def threat_intelligence_config():
+    """Get threat intelligence configuration"""
+    return {
+        "enabled": True,
+        "fetch_interval_minutes": int(os.getenv("THREAT_FETCH_INTERVAL_MINUTES", "15")),
+        "min_confidence": int(os.getenv("THREAT_MIN_CONFIDENCE", "60")),
+        "sources": {
+            "otx": bool(os.getenv("OTX_API_KEY")),
+            "abuseipdb": bool(os.getenv("ABUSEIPDB_API_KEY")),
+            "greynoise": bool(os.getenv("GREYNOISE_API_KEY")),
+            "dshield": True  # No API key needed
+        }
+    }
 
 # Global exception handler
 @app.exception_handler(Exception)
@@ -207,7 +236,6 @@ async def global_exception_handler(request: Request, exc: Exception):
             "detail": str(exc) if os.getenv("DEBUG", "false").lower() == "true" else "An error occurred"
         }
     )
-
 
 if __name__ == "__main__":
     import uvicorn
